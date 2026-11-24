@@ -24,6 +24,7 @@ function Icon({ kind }: { kind: Kind }) {
 function Console({ engine }: { engine: Engine }) {
   const [devices, setDevices] = useState<Device[]>([])
   const [scenario, setScenario] = useState(0)
+  const [exampleAvailable, setExampleAvailable] = useState(true)
   const [source, setSource] = useState(-1)
   const [target, setTarget] = useState(-1)
   const [weighted, setWeighted] = useState(true)
@@ -71,6 +72,7 @@ function Console({ engine }: { engine: Engine }) {
     const end = nodes.at(-1)!.id
     setDevices(nodes)
     setScenario(index)
+    setExampleAvailable(true)
     setSource(0)
     setTarget(end)
     setBaseline(null)
@@ -102,16 +104,21 @@ function Console({ engine }: { engine: Engine }) {
   }
 
   function applyFaults(changes: [number, number][], down: number) {
+    const pending = changes.filter(([a, b]) => Boolean(b < 0 ? engine.node_down(a) : engine.line_down(a, b)) !== Boolean(down))
+    if (pending.length > engine.undo_remaining()) {
+      log('장애 이력이 가득 찼습니다. 작업을 되돌리거나 초기화하세요.')
+      return
+    }
     const before = calculate(engine, source, target, weighted)
     let applied = 0
-    for (const [a, b] of changes) applied += engine.fault_set(a, b, down)
+    for (const [a, b] of pending) applied += engine.fault_set(a, b, down)
     if (!applied) {
       log('상태 변경 없음. 현재 상태 또는 Undo 한도를 확인하세요.')
       return
     }
     setBaseline(before)
     show(calculate(engine, source, target, weighted))
-    log(`${down ? '장애' : '복구'} · ${changes.map(([a, b]) => b < 0 ? name(a) : name(a) + ' ↔ ' + name(b)).join(', ')} (${applied}건)`)
+    log(`${down ? '장애' : '복구'} · ${pending.map(([a, b]) => b < 0 ? name(a) : name(a) + ' ↔ ' + name(b)).join(', ')} (${applied}건)`)
   }
 
   function undo() {
@@ -165,6 +172,9 @@ function Console({ engine }: { engine: Engine }) {
       if (!engine.line_delete(a, b)) return
       refresh()
     }
+    if (scenarios[scenario].faults.some(([start, end]) =>
+      b < 0 ? start === a || end === a : (start === a && end === b) || (start === b && end === a)
+    )) setExampleAvailable(false)
     select(null)
     log('선택 항목 삭제 · 장애 Undo 기록 초기화')
   }
@@ -218,7 +228,7 @@ function Console({ engine }: { engine: Engine }) {
           }}>▷ 탐색 시작</button>
         </section>
         <section><h2>장애 시뮬레이션</h2>
-          <button className="danger full" onClick={() => applyFaults(scenarios[scenario].faults, 1)}>예제 장애 발생</button>
+          <button className="danger full" disabled={!exampleAvailable} onClick={() => applyFaults(scenarios[scenario].faults, 1)}>예제 장애 발생</button>
           <button className="full" disabled={!engine.undo_count()} onClick={undo}>↶ 장애 작업 되돌리기</button>
         </section>
       </aside>
@@ -289,7 +299,7 @@ function Console({ engine }: { engine: Engine }) {
           {!selection && <p className="muted">토폴로지에서 장비 또는 회선을 선택하세요.</p>}
           {selectedNode && <><p>{types[selectedNode.kind]} · {engine.node_down(selectedNode.id) ? '장애' : '정상'}</p>
             <label>장비 이름<input maxLength={24} value={selectedNode.name} onChange={event => setDevices(devices.map(node => node.id === selectedNode.id ? { ...node, name: event.target.value } : node))}/></label></>}
-          {selectedLine && <><p>{name(selectedLine.a)} ↔ {name(selectedLine.b)} · {selectedLine.down ? '장애' : '정상'}</p>
+          {selectedLine && <><p>{name(selectedLine.a)} ↔ {name(selectedLine.b)} · {selectedLine.down ? '회선 장애' : engine.node_down(selectedLine.a) || engine.node_down(selectedLine.b) ? '연결 장비 장애' : '정상'}</p>
             <form key={selectedLine.a + ':' + selectedLine.b} onSubmit={event => {
               event.preventDefault()
               const value = Number(new FormData(event.currentTarget).get('cost'))

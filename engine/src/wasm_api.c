@@ -22,6 +22,7 @@ EMSCRIPTEN_KEEPALIVE int line_down(int a, int b) {
 EMSCRIPTEN_KEEPALIVE int fault_set(int a, int b, int down) { return set_fault(&graph, a, b, down); }
 EMSCRIPTEN_KEEPALIVE int fault_undo(void) { return undo_fault(&graph); }
 EMSCRIPTEN_KEEPALIVE int undo_count(void) { return graph.history.count; }
+EMSCRIPTEN_KEEPALIVE int undo_remaining(void) { return HISTORY - graph.history.count; }
 EMSCRIPTEN_KEEPALIVE int run(int a, int b, int weighted) { return search(&graph, a, b, weighted, &result); }
 EMSCRIPTEN_KEEPALIVE int path_length(void) { return result.count; }
 EMSCRIPTEN_KEEPALIVE int path_node(int index) {
